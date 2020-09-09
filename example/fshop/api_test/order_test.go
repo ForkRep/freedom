@@ -9,7 +9,7 @@ import (
 
 // 获取分页订单
 func TestOrderItems(t *testing.T) {
-	str, rep := requests.NewH2CRequest("http://127.0.0.1:8000/order/items").Get().SetParam("page", 1).SetParam("pageSize", 5).SetParam("userId", 1).ToString()
+	str, rep := requests.NewH2CRequest("http://127.0.0.1:8000/order/items").Get().SetQueryParam("page", 1).SetQueryParam("pageSize", 5).SetQueryParam("userId", 1).ToString()
 	t.Log(str, rep)
 }
 

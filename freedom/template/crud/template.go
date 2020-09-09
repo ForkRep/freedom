@@ -68,139 +68,105 @@ func FunTemplatePackage() string {
 		GetWorker() freedom.Worker
 	}
 
-	// NewORMDescBuilder .
-	func NewORMDescBuilder(column string, columns ...string) *Reorder {
-		return newReorder("desc", column, columns...)
+	// Builder .
+	type Builder interface {
+		Execute(db *gorm.DB, object interface{}) error
 	}
 
-	// NewORMAscBuilder .
-	func NewORMAscBuilder(column string, columns ...string) *Reorder {
-		return newReorder("asc", column, columns...)
+	// Pager .
+	type Pager struct {
+		pageSize  int
+		page      int
+		totalPage int
+		fields    []string
+		orders    []string
 	}
 
-	// NewORMBuilder .
-	func NewORMBuilder() *Builder {
-		return &Builder{}
+	// NewDescPager .
+	func NewDescPager(column string, columns ...string) *Pager {
+		return newDefaultPager("desc", column, columns...)
+	}
+
+	// NewAscPager .
+	func NewAscPager(column string, columns ...string) *Pager {
+		return newDefaultPager("asc", column, columns...)
 	}
 
 	// NewDescOrder .
-	func newReorder(sort, field string, args ...string) *Reorder {
+	func newDefaultPager(sort, field string, args ...string) *Pager {
 		fields := []string{field}
 		fields = append(fields, args...)
 		orders := []string{}
 		for index := 0; index < len(fields); index++ {
 			orders = append(orders, sort)
 		}
-		return &Reorder{
+		return &Pager{
 			fields: fields,
 			orders: orders,
 		}
 	}
-	// Reorder .
-	type Reorder struct {
-		fields []string
-		orders []string
-	}
-	
-	// NewPageBuilder .
-	func (o *Reorder) NewPageBuilder(page, pageSize int) *Builder {
-		pager := new(Builder)
-		pager.reorder = o
-		pager.page = page
-		pager.pageSize = pageSize
-		return pager
-	}
-	
-	// NewBuilder .
-	func (o *Reorder) NewBuilder() *Builder {
-		pager := new(Builder)
-		pager.reorder = o
-		return pager
-	}
-	
+
 	// Order .
-	func (o *Reorder) Order() interface{} {
+	func (o *Pager) Order() interface{} {
+		if len(o.fields) == 0 {
+			return nil
+		}
 		args := []string{}
 		for index := 0; index < len(o.fields); index++ {
 			args = append(args, fmt.Sprintf("$$wave%s$$wave %s", o.fields[index], o.orders[index]))
 		}
-	
+
 		return strings.Join(args, ",")
 	}
-	
-	// Builder .
-	type Builder struct {
-		reorder       *Reorder
-		pageSize      int
-		page          int
-		totalPage     int
-		selectColumn  []string
-	}
-	
+
 	// TotalPage .
-	func (b *Builder) TotalPage() int {
-		return b.totalPage
+	func (p *Pager) TotalPage() int {
+		return p.totalPage
 	}
-	
-	// Order .
-	func (b *Builder) Order() interface{} {
-		if b.reorder != nil {
-			return b.Order()
-		}
-		return ""
+
+	// SetPage .
+	func (p *Pager) SetPage(page, pageSize int) *Pager {
+		p.page = page
+		p.pageSize = pageSize
+		return p
 	}
 	
 	// Execute .
-	func (b *Builder) Execute(db *gorm.DB, object interface{}) (e error) {
+	func (p *Pager) Execute(db *gorm.DB, object interface{}) (e error) {
 		pageFind := false
-		if b.reorder != nil {
-			db = db.Order(b.reorder.Order())
+		orderValue := p.Order()
+		if orderValue != nil {
+			db = db.Order(orderValue)
 		} else {
 			db = db.Set("gorm:order_by_primary_key", "DESC")
 		}
-		if b.page != 0 && b.pageSize != 0 {
+		if p.page != 0 && p.pageSize != 0 {
 			pageFind = true
-			db = db.Offset((b.page - 1) * b.pageSize).Limit(b.pageSize)
+			db = db.Offset((p.page - 1) * p.pageSize).Limit(p.pageSize)
 		}
-	
-		if len(b.selectColumn) > 0 {
-			db = db.Select(b.selectColumn)
-		}
-	
+
 		resultDB := db.Find(object)
 		if resultDB.Error != nil {
 			return resultDB.Error
 		}
-	
+
 		if !pageFind {
 			return
 		}
-	
+
 		var count int
 		e = resultDB.Offset(0).Limit(1).Count(&count).Error
 		if e == nil && count != 0 {
 			//计算分页
-			if count%b.pageSize == 0 {
-				b.totalPage = count / b.pageSize
+			if count%p.pageSize == 0 {
+				p.totalPage = count / p.pageSize
 			} else {
-				b.totalPage = count/b.pageSize + 1
+				p.totalPage = count/p.pageSize + 1
 			}
 		}
 		return
 	}
-	
-	// SetPage .
-	func (b *Builder) SetPage(page, pageSize int) *Builder {
-		b.page = page
-		b.pageSize = pageSize
-		return b
-	}
-	
-	// SelectColumn .
-	func (b *Builder) SelectColumn(column ...string) *Builder {
-		b.selectColumn = append(b.selectColumn, column...)
-		return b
-	}
+
 	
 	func ormErrorLog(repo GORMRepository, model, method string, e error, expression ...interface{}) {
 		if e == nil || e == gorm.ErrRecordNotFound {
